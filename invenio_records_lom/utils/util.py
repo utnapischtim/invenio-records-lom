@@ -10,9 +10,15 @@
 
 from collections.abc import MutableMapping
 from csv import reader
+from functools import singledispatch
 from importlib import resources
 from json import load
 from typing import Any, Iterator, Optional, Union
+
+from invenio_search import RecordsSearch
+from invenio_search.engine import dsl
+
+from .types import DuplicateRecordError
 
 
 class DotAccessWrapper(MutableMapping):
@@ -209,3 +215,20 @@ def durationify(datetime: str, description: str):
         inner["decription"] = description
 
     return {"duration": inner}
+
+
+@singledispatch
+def check_about_duplicate(value: str, attribute: str = None):
+    """Generic check if a duplicate exists."""
+    search = RecordsSearch(index="lomrecords")
+
+    if attribute:
+        query = {f"metadata.fields.{category}": value}
+    else:
+        return
+
+    search.query = dsl.Q("match", **query)
+    results = search.execute()
+
+    if len(results) > 0:
+        raise DuplicateRecordError(value=value, category=category, id_=results[0]["id"])
